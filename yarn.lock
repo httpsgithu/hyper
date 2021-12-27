@@ -743,10 +743,10 @@
   dependencies:
     "@types/node" "*"
 
-"@types/mousetrap@1.6.3":
-  version "1.6.3"
-  resolved "https://registry.npmjs.org/@types/mousetrap/-/mousetrap-1.6.3.tgz#3159a01a2b21c9155a3d8f85588885d725dc987d"
-  integrity sha512-13gmo3M2qVvjQrWNseqM3+cR6S2Ss3grbR2NZltgMq94wOwqJYQdgn8qzwDshzgXqMlSUtyPZjysImmktu22ew==
+"@types/mousetrap@1.6.9":
+  version "1.6.9"
+  resolved "https://registry.npmjs.org/@types/mousetrap/-/mousetrap-1.6.9.tgz#f1ef9adbd1eac3466f21b6988b1c82c633a45340"
+  integrity sha512-HUAiN65VsRXyFCTicolwb5+I7FM6f72zjMWr+ajGk+YTvzBgXqa2A5U7d+rtsouAkunJ5U4Sb5lNJjo9w+nmXg==
 
 "@types/ms@0.7.31":
   version "0.7.31"
