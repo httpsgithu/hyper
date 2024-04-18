@@ -3,7 +3,9 @@
     "react",
     "prettier",
     "@typescript-eslint",
-    "eslint-comments"
+    "eslint-comments",
+    "lodash",
+    "import"
   ],
   "extends": [
     "eslint:recommended",
@@ -13,14 +15,16 @@
   ],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": 8,
     "sourceType": "module",
     "ecmaFeatures": {
       "jsx": true,
       "impliedStrict": true,
       "experimentalObjectRestSpread": true
     },
-    "allowImportExportEverywhere": true
+    "allowImportExportEverywhere": true,
+    "project": [
+      "./tsconfig.eslint.json"
+    ]
   },
   "env": {
     "es6": true,
@@ -30,7 +34,11 @@
   "settings": {
     "react": {
       "version": "detect"
-    }
+    },
+    "import/resolver": {
+      "typescript": {}
+    },
+    "import/internal-regex": "^(electron|react)$"
   },
   "rules": {
     "func-names": [
@@ -54,34 +62,21 @@
         "bracketSpacing": false,
         "semi": true,
         "useTabs": false,
-        "jsxBracketSameLine": false
+        "bracketSameLine": false
       }
     ],
-    "eslint-comments/no-unused-disable": "error"
-  },
-  "overrides": [
-    {
-      "files": [
-        "app/config/config-default.js",
-        ".hyper.js"
-      ],
-      "rules": {
-        "prettier/prettier": [
-          "error",
-          {
-            "printWidth": 120,
-            "tabWidth": 2,
-            "singleQuote": true,
-            "trailingComma": "es5",
-            "bracketSpacing": false,
-            "semi": true,
-            "useTabs": false,
-            "parser": "babel",
-            "jsxBracketSameLine": false
-          }
+    "eslint-comments/no-unused-disable": "error",
+    "react/no-unknown-property":[
+      "error",
+      {
+        "ignore": [
+          "jsx",
+          "global"
         ]
       }
-    },
+    ]
+  },
+  "overrides": [
     {
       "files": [
         "**.ts",
@@ -89,7 +84,8 @@
       ],
       "extends": [
         "plugin:@typescript-eslint/recommended",
-        "prettier/@typescript-eslint"
+        "plugin:@typescript-eslint/recommended-requiring-type-checking",
+        "prettier"
       ],
       "rules": {
         "@typescript-eslint/explicit-function-return-type": "off",
@@ -99,7 +95,66 @@
         "@typescript-eslint/prefer-optional-chain": "error",
         "@typescript-eslint/ban-types": "off",
         "no-shadow": "off",
-        "@typescript-eslint/no-shadow": ["error"]
+        "@typescript-eslint/no-shadow": ["error"],
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        "@typescript-eslint/no-unsafe-member-access": "off",
+        "@typescript-eslint/restrict-template-expressions": "off",
+        "@typescript-eslint/consistent-type-imports": [ "error", { "disallowTypeAnnotations": false } ],
+        "lodash/prop-shorthand": [ "error", "always" ],
+        "lodash/import-scope": [ "error", "method" ],
+        "lodash/collection-return": "error",
+        "lodash/collection-method-value": "error",
+        "import/no-extraneous-dependencies": "error",
+        "import/no-anonymous-default-export": "error",
+        "import/order": [
+          "error",
+          {
+            "groups": [
+              "builtin",
+              "internal",
+              "external",
+              "parent",
+              "sibling",
+              "index"
+            ],
+            "newlines-between": "always",
+            "alphabetize": {
+              "order": "asc",
+              "orderImportKind": "desc",
+              "caseInsensitive": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "extends": [
+        "plugin:jsonc/recommended-with-json",
+        "plugin:json-schema-validator/recommended"
+      ],
+      "files": [
+        "*.json"
+      ],
+      "parser": "jsonc-eslint-parser",
+      "plugins": [
+        "jsonc",
+        "json-schema-validator"
+      ],
+      "rules": {
+        "jsonc/array-element-newline": [
+          "error",
+          "consistent"
+        ],
+        "jsonc/array-bracket-newline": [
+          "error",
+          "consistent"
+        ],
+        "jsonc/indent": [
+          "error",
+          2
+        ],
+        "prettier/prettier": "off",
+        "json-schema-validator/no-invalid": "error"
       }
     }
   ]

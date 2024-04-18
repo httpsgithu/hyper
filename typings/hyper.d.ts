@@ -1,61 +1,59 @@
-import {Immutable} from 'seamless-immutable';
-import Client from './utils/rpc';
+// eslint-disable-next-line eslint-comments/disable-enable-pair
+/* eslint-disable import/order */
+import type {Immutable} from 'seamless-immutable';
+import type Client from '../lib/utils/rpc';
 
 declare global {
   interface Window {
     __rpcId: string;
     rpc: Client;
     focusActiveTerm: (uid?: string) => void;
+    profileName: string;
   }
+
+  const snapshotResult: {
+    customRequire: {
+      (module: string): NodeModule;
+      cache: Record<string, {exports: NodeModule}>;
+      definitions: Record<string, {exports: any}>;
+    };
+    setGlobals(global: any, process: any, window: any, document: any, console: any, require: any): void;
+  };
+
+  const __non_webpack_require__: NodeRequire;
 }
 
-export type ITermGroup = {
+export type ITermGroup = Immutable<{
   uid: string;
   sessionUid: string | null;
   parentUid: string | null;
   direction: 'HORIZONTAL' | 'VERTICAL' | null;
   sizes: number[] | null;
   children: string[];
-};
+}>;
 
-export type ITermGroups = Record<string, ITermGroup>;
+export type ITermGroups = Immutable<Record<string, ITermGroup>>;
 
-export type ITermState = {
-  termGroups: ITermGroups;
+export type ITermState = Immutable<{
+  termGroups: Mutable<ITermGroups>;
   activeSessions: Record<string, string>;
   activeRootGroup: string | null;
-};
+}>;
 
 export type cursorShapes = 'BEAM' | 'UNDERLINE' | 'BLOCK';
-import {FontWeight, Terminal} from 'xterm';
+import type {FontWeight, IWindowsPty, Terminal} from 'xterm';
+import type {ColorMap, configOptions} from './config';
 
-export type uiState = {
+export type uiState = Immutable<{
   _lastUpdate: number | null;
   activeUid: string | null;
   activityMarkers: Record<string, boolean>;
   backgroundColor: string;
-  bell: string;
+  bell: 'SOUND' | false;
   bellSoundURL: string | null;
   bellSound: string | null;
   borderColor: string;
-  colors: {
-    black: string;
-    blue: string;
-    cyan: string;
-    green: string;
-    lightBlack: string;
-    lightBlue: string;
-    lightCyan: string;
-    lightGreen: string;
-    lightMagenta: string;
-    lightRed: string;
-    lightWhite: string;
-    lightYellow: string;
-    magenta: string;
-    red: string;
-    white: string;
-    yellow: string;
-  };
+  colors: ColorMap;
   cols: number | null;
   copyOnSelect: boolean;
   css: string;
@@ -73,6 +71,7 @@ export type uiState = {
   fontWeightBold: FontWeight;
   foregroundColor: string;
   fullScreen: boolean;
+  imageSupport: boolean;
   letterSpacing: number;
   lineHeight: number;
   macOptionSelectionMode: string;
@@ -95,10 +94,11 @@ export type uiState = {
   quickEdit: boolean;
   resizeAt: number;
   rows: number | null;
+  screenReaderMode: boolean;
   scrollback: number;
   selectionColor: string;
   showHamburgerMenu: boolean | '';
-  showWindowControls: string;
+  showWindowControls: boolean | 'left' | '';
   termCSS: string;
   uiFontFamily: string;
   updateCanInstall: null | boolean;
@@ -106,8 +106,11 @@ export type uiState = {
   updateReleaseUrl: string | null;
   updateVersion: string | null;
   webGLRenderer: boolean;
-  webLinksActivationKey: string;
-};
+  webLinksActivationKey: 'ctrl' | 'alt' | 'meta' | 'shift' | '';
+  windowsPty?: IWindowsPty;
+  defaultProfile: string;
+  profiles: configOptions['profiles'];
+}>;
 
 export type session = {
   cleared: boolean;
@@ -119,26 +122,24 @@ export type session = {
   shell: string | null;
   title: string;
   uid: string;
-  url: string | null;
   splitDirection?: 'HORIZONTAL' | 'VERTICAL';
   activeUid?: string;
+  profile: string;
 };
-export type sessionState = {
+
+export type sessionState = Immutable<{
   sessions: Record<string, session>;
   activeUid: string | null;
   write?: any;
-};
+}>;
 
-export {ITermGroupReducer} from './reducers/term-groups';
-import {ITermGroupReducer} from './reducers/term-groups';
+export type ITermGroupReducer = Reducer<ITermState, HyperActions>;
 
-export {IUiReducer} from './reducers/ui';
-import {IUiReducer} from './reducers/ui';
+export type IUiReducer = Reducer<uiState, HyperActions>;
 
-export {ISessionReducer} from './reducers/sessions';
-import {ISessionReducer} from './reducers/sessions';
+export type ISessionReducer = Reducer<sessionState, HyperActions>;
 
-import {Middleware} from 'redux';
+import type {Middleware, Reducer} from 'redux';
 export type hyperPlugin = {
   getTabProps: any;
   getTabsProps: any;
@@ -162,17 +163,20 @@ export type hyperPlugin = {
   reduceUI: IUiReducer;
 };
 
-import rootReducer from './reducers/index';
-export type HyperState = ReturnType<typeof rootReducer>;
+export type HyperState = {
+  ui: uiState;
+  sessions: sessionState;
+  termGroups: ITermState;
+};
 
-import {UIActions} from './constants/ui';
-import {ConfigActions} from './constants/config';
-import {SessionActions} from './constants/sessions';
-import {NotificationActions} from './constants/notifications';
-import {UpdateActions} from './constants/updater';
-import {TermGroupActions} from './constants/term-groups';
-import {InitActions} from './constants';
-import {TabActions} from './constants/tabs';
+import type {UIActions} from './constants/ui';
+import type {ConfigActions} from './constants/config';
+import type {SessionActions} from './constants/sessions';
+import type {NotificationActions} from './constants/notifications';
+import type {UpdateActions} from './constants/updater';
+import type {TermGroupActions} from './constants/term-groups';
+import type {InitActions} from './constants';
+import type {TabActions} from './constants/tabs';
 
 export type HyperActions = (
   | UIActions
@@ -185,14 +189,10 @@ export type HyperActions = (
   | TabActions
 ) & {effect?: () => void};
 
-type immutableRecord<T> = {[k in keyof T]: Immutable<T[k]>};
-
-import {ThunkDispatch} from 'redux-thunk';
-import configureStore from './store/configure-store';
-export type HyperThunkDispatch = ThunkDispatch<HyperState, undefined, HyperActions>;
+import type configureStore from '../lib/store/configure-store';
 export type HyperDispatch = ReturnType<typeof configureStore>['dispatch'];
 
-import {ReactChild} from 'react';
+import type {ReactChild, ReactNode} from 'react';
 type extensionProps = Partial<{
   customChildren: ReactChild | ReactChild[];
   customChildrenBefore: ReactChild | ReactChild[];
@@ -200,17 +200,17 @@ type extensionProps = Partial<{
   customInnerChildren: ReactChild | ReactChild[];
 }>;
 
-import {HeaderConnectedProps} from './containers/header';
+import type {HeaderConnectedProps} from '../lib/containers/header';
 export type HeaderProps = HeaderConnectedProps & extensionProps;
 
-import {HyperConnectedProps} from './containers/hyper';
+import type {HyperConnectedProps} from '../lib/containers/hyper';
 export type HyperProps = HyperConnectedProps & extensionProps;
 
-import {NotificationsConnectedProps} from './containers/notifications';
+import type {NotificationsConnectedProps} from '../lib/containers/notifications';
 export type NotificationsProps = NotificationsConnectedProps & extensionProps;
 
-import Terms from './components/terms';
-import {TermsConnectedProps} from './containers/terms';
+import type Terms from '../lib/components/terms';
+import type {TermsConnectedProps} from '../lib/containers/terms';
 export type TermsProps = TermsConnectedProps & extensionProps & {ref_: (terms: Terms | null) => void};
 
 export type StyleSheetProps = {
@@ -242,9 +242,13 @@ export type ITab = {
 export type TabsProps = {
   tabs: ITab[];
   borderColor: string;
+  backgroundColor: string;
   onChange: (uid: string) => void;
   onClose: (uid: string) => void;
   fullScreen: boolean;
+  defaultProfile: string;
+  profiles: configOptions['profiles'];
+  openNewTab: (profile: string) => void;
 } & extensionProps;
 
 export type NotificationProps = {
@@ -257,25 +261,22 @@ export type NotificationProps = {
   userDismissColor?: string;
 } & extensionProps;
 
-export type NotificationState = {
-  dismissing: boolean;
-};
-
 export type SplitPaneProps = {
   borderColor: string;
   direction: 'horizontal' | 'vertical';
-  onResize: Function;
+  onResize: (sizes: number[]) => void;
   sizes?: Immutable<number[]> | null;
+  children: ReactNode[];
 };
 
-import Term from './components/term';
+import type Term from '../lib/components/term';
 
 export type TermGroupOwnProps = {
   cursorAccentColor?: string;
   fontSmoothing?: string;
   parentProps: TermsProps;
   ref_: (uid: string, term: Term | null) => void;
-  termGroup: Immutable<ITermGroup>;
+  termGroup: ITermGroup;
   terms: Record<string, Term | null>;
 } & Pick<
   TermsProps,
@@ -302,40 +303,55 @@ export type TermGroupOwnProps = {
   | 'modifierKeys'
   | 'onActive'
   | 'onContextMenu'
+  | 'onCloseSearch'
   | 'onData'
+  | 'onOpenSearch'
   | 'onResize'
   | 'onTitle'
   | 'padding'
   | 'quickEdit'
+  | 'screenReaderMode'
   | 'scrollback'
   | 'selectionColor'
   | 'sessions'
-  | 'toggleSearch'
   | 'uiFontFamily'
   | 'webGLRenderer'
   | 'webLinksActivationKey'
+  | 'windowsPty'
+  | 'imageSupport'
 >;
 
-import {TermGroupConnectedProps} from './components/term-group';
+import type {TermGroupConnectedProps} from '../lib/components/term-group';
 export type TermGroupProps = TermGroupConnectedProps & TermGroupOwnProps;
 
 export type SearchBoxProps = {
-  search: (searchTerm: string) => void;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+  results: {resultIndex: number; resultCount: number} | undefined;
+  toggleCaseSensitive: () => void;
+  toggleWholeWord: () => void;
+  toggleRegex: () => void;
   next: (searchTerm: string) => void;
   prev: (searchTerm: string) => void;
   close: () => void;
+  backgroundColor: string;
+  foregroundColor: string;
+  borderColor: string;
+  selectionColor: string;
+  font: string;
 };
 
-import {FitAddon} from 'xterm-addon-fit';
-import {SearchAddon} from 'xterm-addon-search';
+import type {FitAddon} from 'xterm-addon-fit';
+import type {SearchAddon} from 'xterm-addon-search';
 export type TermProps = {
   backgroundColor: string;
-  bell: string;
+  bell: 'SOUND' | false;
   bellSound: string | null;
   bellSoundURL: string | null;
   borderColor: string;
   cleared: boolean;
-  colors: uiState['colors'];
+  colors: ColorMap;
   cols: number | null;
   copyOnSelect: boolean;
   cursorAccentColor?: string;
@@ -350,32 +366,41 @@ export type TermProps = {
   fontWeight: FontWeight;
   fontWeightBold: FontWeight;
   foregroundColor: string;
+  imageSupport: boolean;
   isTermActive: boolean;
   letterSpacing: number;
   lineHeight: number;
   macOptionSelectionMode: string;
   modifierKeys: Immutable<{altIsMeta: boolean; cmdIsMeta: boolean}>;
   onActive: () => void;
+  onCloseSearch: () => void;
   onContextMenu: (selection: any) => void;
   onCursorMove?: (cursorFrame: {x: number; y: number; width: number; height: number; col: number; row: number}) => void;
   onData: (data: string) => void;
+  onOpenSearch: () => void;
   onResize: (cols: number, rows: number) => void;
   onTitle: (title: string) => void;
   padding: string;
   quickEdit: boolean;
   rows: number | null;
+  screenReaderMode: boolean;
   scrollback: number;
   search: boolean;
   searchAddon: SearchAddon | null;
   selectionColor: string;
   term: Terminal | null;
-  toggleSearch: () => void;
   uid: string;
   uiFontFamily: string;
-  url: string | null;
   webGLRenderer: boolean;
-  webLinksActivationKey: string;
+  webLinksActivationKey: 'ctrl' | 'alt' | 'meta' | 'shift' | '';
+  windowsPty?: IWindowsPty;
   ref_: (uid: string, term: Term | null) => void;
 } & extensionProps;
+
+// Utility types
+
+export type Mutable<T> = T extends Immutable<infer U> ? (Exclude<U, T> extends never ? U : Exclude<U, T>) : T;
+
+export type immutableRecord<T> = {[k in keyof T]: Immutable<T[k]>};
 
 export type Assignable<T, U> = {[k in keyof U]: k extends keyof T ? T[k] : U[k]} & Partial<T>;

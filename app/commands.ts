@@ -1,7 +1,10 @@
-import {app, Menu, BrowserWindow} from 'electron';
+import {app, Menu} from 'electron';
+import type {BrowserWindow} from 'electron';
+
 import {openConfig, getConfig} from './config';
 import {updatePlugins} from './plugins';
 import {installCLI} from './utils/cli-install';
+import * as systemContextMenu from './utils/system-context-menu';
 
 const commands: Record<string, (focusedWindow?: BrowserWindow) => void> = {
   'window:new': () => {
@@ -25,7 +28,7 @@ const commands: Record<string, (focusedWindow?: BrowserWindow) => void> = {
     focusedWindow?.rpc.emit('termgroup close req');
   },
   'window:preferences': () => {
-    openConfig();
+    void openConfig();
   },
   'editor:clearBuffer': (focusedWindow) => {
     focusedWindow?.rpc.emit('session clear req');
@@ -117,12 +120,21 @@ const commands: Record<string, (focusedWindow?: BrowserWindow) => void> = {
     focusedWindow?.rpc.emit('session search close');
   },
   'cli:install': () => {
-    installCLI(true);
+    void installCLI(true);
   },
   'window:hamburgerMenu': () => {
     if (process.platform !== 'darwin' && ['', true].includes(getConfig().showHamburgerMenu)) {
       Menu.getApplicationMenu()!.popup({x: 25, y: 22});
     }
+  },
+  'systemContextMenu:add': () => {
+    systemContextMenu.add();
+  },
+  'systemContextMenu:remove': () => {
+    systemContextMenu.remove();
+  },
+  'window:toggleKeepOnTop': (focusedWindow) => {
+    focusedWindow?.setAlwaysOnTop(!focusedWindow.isAlwaysOnTop());
   }
 };
 
@@ -131,6 +143,22 @@ const commands: Record<string, (focusedWindow?: BrowserWindow) => void> = {
   const index = cmdIndex === 'last' ? cmdIndex : cmdIndex - 1;
   commands[`tab:jump:${cmdIndex}`] = (focusedWindow) => {
     focusedWindow?.rpc.emit('move jump req', index);
+  };
+});
+
+//Profile specific commands
+getConfig().profiles.forEach((profile) => {
+  commands[`window:new:${profile.name}`] = () => {
+    setTimeout(() => app.createWindow(undefined, undefined, profile.name), 0);
+  };
+  commands[`tab:new:${profile.name}`] = (focusedWindow) => {
+    focusedWindow?.rpc.emit('termgroup add req', {profile: profile.name});
+  };
+  commands[`pane:splitRight:${profile.name}`] = (focusedWindow) => {
+    focusedWindow?.rpc.emit('split request vertical', {profile: profile.name});
+  };
+  commands[`pane:splitDown:${profile.name}`] = (focusedWindow) => {
+    focusedWindow?.rpc.emit('split request horizontal', {profile: profile.name});
   };
 });
 

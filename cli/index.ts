@@ -1,19 +1,23 @@
 // This is a CLI tool, using console is OK
 /* eslint no-console: 0 */
-import {spawn, exec, SpawnOptions} from 'child_process';
-import {isAbsolute, resolve} from 'path';
+import {spawn, exec} from 'child_process';
+import type {SpawnOptions} from 'child_process';
 import {existsSync} from 'fs';
-import {version} from '../app/package.json';
-import pify from 'pify';
+import {isAbsolute, resolve} from 'path';
+import {promisify} from 'util';
+
 import args from 'args';
 import chalk from 'chalk';
-import open from 'open';
-import columnify from 'columnify';
+import _columnify from 'columnify';
 import got from 'got';
+import open from 'open';
 import ora from 'ora';
+
+import {version} from '../app/package.json';
+
 import * as api from './api';
 
-let commandPromise: Promise<void>;
+let commandPromise: Promise<void> | undefined;
 
 const assertPluginName = (pluginName: string) => {
   if (!pluginName) {
@@ -30,6 +34,22 @@ const checkConfig = () => {
   msg += 'Please launch Hyper and retry.';
   console.error(msg);
   process.exit(1);
+};
+
+const columnify = (data: {name: string; description: string}[]) => {
+  const maxNameLength = Math.max(...data.map((entry) => entry.name.length), 0);
+  const descriptionWidth = process.stdout.columns - maxNameLength - 1;
+  return _columnify(data, {
+    showHeaders: false,
+    config: {
+      description: {
+        maxWidth: descriptionWidth
+      },
+      name: {
+        dataTransform: (nameValue) => chalk.green(nameValue)
+      }
+    }
+  }).replace(/\s+$/gm, ''); // remove padding from the end of all lines
 };
 
 args.command(
@@ -57,7 +77,7 @@ args.command(
     commandPromise = api
       .uninstall(pluginName)
       .then(() => console.log(chalk.green(`${pluginName} uninstalled successfully!`)))
-      .catch((err) => console.log(chalk.red(err)));
+      .catch((err) => console.error(chalk.red(err)));
   },
   ['u', 'rm', 'remove']
 );
@@ -84,18 +104,13 @@ const lsRemote = (pattern?: string) => {
   const URL = `https://api.npms.io/v2/search?q=${
     (pattern && `${pattern}+`) || ''
   }keywords:hyper-plugin,hyper-theme&size=250`;
+  type npmResult = {package: {name: string; description: string}};
   return got(URL)
-    .then((response) => JSON.parse(response.body).results as any[])
+    .then((response) => JSON.parse(response.body).results as npmResult[])
     .then((entries) => entries.map((entry) => entry.package))
     .then((entries) =>
       entries.map(({name, description}) => {
         return {name, description};
-      })
-    )
-    .then((entries) =>
-      entries.map((entry) => {
-        entry.name = chalk.green(entry.name);
-        return entry;
       })
     );
 };
@@ -115,9 +130,8 @@ args.command(
           console.error(`${chalk.red('Try')} ${chalk.green('hyper ls-remote')}`);
           process.exit(1);
         } else {
-          let msg = columnify(entries);
+          const msg = columnify(entries);
           spinner.succeed();
-          msg = msg.substring(msg.indexOf('\n') + 1); // remove header
           console.log(msg);
         }
       })
@@ -137,10 +151,8 @@ args.command(
 
     commandPromise = lsRemote()
       .then((entries) => {
-        let msg = columnify(entries);
-
+        const msg = columnify(entries);
         spinner.succeed();
-        msg = msg.substring(msg.indexOf('\n') + 1); // remove header
         console.log(msg);
       })
       .catch((err) => {
@@ -157,7 +169,7 @@ args.command(
   (name, args_) => {
     const pluginName = args_[0];
     assertPluginName(pluginName);
-    open(`http://ghub.io/${pluginName}`, {wait: false, url: true});
+    void open(`http://ghub.io/${pluginName}`, {wait: false});
     process.exit(0);
   },
   ['d', 'h', 'home']
@@ -183,8 +195,10 @@ const main = (argv: string[]) => {
     version: false,
     mri: {
       boolean: ['v', 'verbose']
-    }
-  } as any);
+    },
+    mainColor: 'yellow',
+    subColor: 'dim'
+  });
 
   if (commandPromise) {
     return commandPromise;
@@ -224,14 +238,16 @@ const main = (argv: string[]) => {
       const opts = {
         env
       };
-      return pify(exec)(cmd, opts);
+      return promisify(exec)(cmd, opts);
     }
   }
 
   const child = spawn(process.execPath, args_, options);
 
   if (flags.verbose) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     child.stdout?.on('data', (data) => console.log(data.toString('utf8')));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     child.stderr?.on('data', (data) => console.error(data.toString('utf8')));
   }
   if (flags.verbose) {

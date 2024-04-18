@@ -1,4 +1,4 @@
-import {Registry, loadRegistry} from './utils/registry';
+import * as Registry from 'native-reg';
 import type {HKEY} from 'native-reg';
 
 const appPath = `"${process.execPath}"`;
@@ -9,12 +9,11 @@ const regKeys = [
 ];
 const regParts = [
   {key: 'command', name: '', value: `${appPath} "%V"`},
-  {name: '', value: 'Open Hyper here'},
+  {name: '', value: 'Open &Hyper here'},
   {name: 'Icon', value: `${appPath}`}
 ];
 
 function addValues(hyperKey: HKEY, commandKey: HKEY) {
-  if (!loadRegistry()) return;
   try {
     Registry.setValueSZ(hyperKey, regParts[1].name, regParts[1].value);
   } catch (error) {
@@ -33,7 +32,6 @@ function addValues(hyperKey: HKEY, commandKey: HKEY) {
 }
 
 export const add = () => {
-  if (!loadRegistry()) return;
   regKeys.forEach((regKey) => {
     try {
       const hyperKey =
@@ -52,7 +50,6 @@ export const add = () => {
 };
 
 export const remove = () => {
-  if (!loadRegistry()) return;
   regKeys.forEach((regKey) => {
     try {
       Registry.deleteTree(Registry.HKCU, regKey);

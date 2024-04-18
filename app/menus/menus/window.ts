@@ -1,11 +1,11 @@
-import {BrowserWindow, MenuItemConstructorOptions} from 'electron';
+import type {BrowserWindow, MenuItemConstructorOptions} from 'electron';
 
-export default (
+const windowMenu = (
   commandKeys: Record<string, string>,
   execCommand: (command: string, focusedWindow?: BrowserWindow) => void
 ): MenuItemConstructorOptions => {
   // Generating tab:jump array
-  const tabJump = [];
+  const tabJump: MenuItemConstructorOptions[] = [];
   for (let i = 1; i <= 9; i++) {
     // 9 is a special number because it means 'last'
     const label = i === 9 ? 'Last' : `${i}`;
@@ -82,9 +82,17 @@ export default (
         role: 'front'
       },
       {
+        label: 'Toggle Always on Top',
+        click: (item, focusedWindow) => {
+          execCommand('window:toggleKeepOnTop', focusedWindow);
+        }
+      },
+      {
         role: 'togglefullscreen',
         accelerator: commandKeys['window:toggleFullScreen']
       }
     ]
   };
 };
+
+export default windowMenu;

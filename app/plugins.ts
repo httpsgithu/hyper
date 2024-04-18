@@ -1,17 +1,28 @@
-import {app, dialog, BrowserWindow, App} from 'electron';
-import {resolve, basename} from 'path';
+/* eslint-disable eslint-comments/disable-enable-pair */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+import {exec, execFile} from 'child_process';
 import {writeFileSync} from 'fs';
+import {resolve, basename} from 'path';
+import {promisify} from 'util';
+
+import {app, dialog, ipcMain as _ipcMain} from 'electron';
+import type {BrowserWindow, App, MenuItemConstructorOptions} from 'electron';
+import React from 'react';
+
 import Config from 'electron-store';
 import ms from 'ms';
-import React from 'react';
 import ReactDom from 'react-dom';
+
+import type {IpcMainWithCommands} from '../typings/common';
+import type {configOptions} from '../typings/config';
+
 import * as config from './config';
+import {plugs} from './config/paths';
 import notify from './notify';
 import {availableExtensions} from './plugins/extensions';
 import {install} from './plugins/install';
-import {plugs} from './config/paths';
 import mapKeys from './utils/map-keys';
-import {configOptions} from '../lib/config';
 
 // local storage
 const cache = new Config();
@@ -98,7 +109,7 @@ function updatePlugins({force = false} = {}) {
   updating = true;
   syncPackageJSON();
   const id_ = id;
-  install((err: any) => {
+  install((err) => {
     updating = false;
 
     if (err) {
@@ -123,7 +134,9 @@ function updatePlugins({force = false} = {}) {
       cache.set('hyper.plugin-versions', pluginVersions);
 
       // notify watchers
-      watchers.forEach((fn) => fn(err, {force}));
+      watchers.forEach((fn) => {
+        fn(err, {force});
+      });
 
       if (force || changed) {
         if (changed) {
@@ -140,7 +153,7 @@ function updatePlugins({force = false} = {}) {
 function getPluginVersions() {
   const paths_ = paths.plugins.concat(paths.localPlugins);
   return paths_.map((path_) => {
-    let version = null;
+    let version: string | null = null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       version = require(resolve(path_, 'package.json')).version;
@@ -195,7 +208,7 @@ function syncPackageJSON() {
   const dependencies = toDependencies(plugins);
   const pkg = {
     name: 'hyper-plugins',
-    description: 'Auto-generated from `~/.hyper.js`!',
+    description: 'Auto-generated from `hyper.json`!',
     private: true,
     version: '0.0.1',
     repository: 'vercel/hyper',
@@ -213,7 +226,7 @@ function syncPackageJSON() {
 }
 
 function alert(message: string) {
-  dialog.showMessageBox({
+  void dialog.showMessageBox({
     message,
     buttons: ['Ok']
   });
@@ -227,7 +240,7 @@ function toDependencies(plugins_: {plugins: string[]}) {
 
     if (match) {
       const index = match.index + 1;
-      const pieces = [];
+      const pieces: string[] = [];
 
       pieces[0] = plugin.substring(0, index);
       pieces[1] = plugin.substring(index + 1, plugin.length);
@@ -269,7 +282,7 @@ function requirePlugins(): any[] {
   const {plugins: plugins_, localPlugins} = paths;
 
   const load = (path_: string) => {
-    let mod: any;
+    let mod: Record<string, any>;
     try {
       mod = require(path_);
       const exposed = mod && Object.keys(mod).some((key) => availableExtensions.has(key));
@@ -289,7 +302,8 @@ function requirePlugins(): any[] {
       console.log(`Plugin ${mod._name} (${mod._version}) loaded.`);
 
       return mod;
-    } catch (err) {
+    } catch (_err) {
+      const err = _err as {code: string; message: string};
       if (err.code === 'MODULE_NOT_FOUND') {
         console.warn(`Plugin error while loading "${basename(path_)}" (${path_}): ${err.message}`);
       } else {
@@ -298,10 +312,13 @@ function requirePlugins(): any[] {
     }
   };
 
-  return plugins_
+  return [
+    ...localPlugins.filter((p) => basename(p) === 'migrated-hyper3-config'),
+    ...plugins_,
+    ...localPlugins.filter((p) => basename(p) !== 'migrated-hyper3-config')
+  ]
     .map(load)
-    .concat(localPlugins.map(load))
-    .filter((v) => Boolean(v));
+    .filter((v): v is Record<string, any> => Boolean(v));
 }
 
 export const onApp = (app_: App) => {
@@ -404,7 +421,7 @@ export const getDeprecatedConfig = () => {
   return deprecated;
 };
 
-export const decorateMenu = (tpl: any) => {
+export const decorateMenu = (tpl: MenuItemConstructorOptions[]) => {
   return decorateObject(tpl, 'decorateMenu');
 };
 
@@ -412,8 +429,8 @@ export const getDecoratedEnv = (baseEnv: Record<string, string>) => {
   return decorateObject(baseEnv, 'decorateEnv');
 };
 
-export const getDecoratedConfig = () => {
-  const baseConfig = config.getConfig();
+export const getDecoratedConfig = (profile: string) => {
+  const baseConfig = config.getProfileConfig(profile);
   const decoratedConfig = decorateObject(baseConfig, 'decorateConfig');
   const fixedConfig = config.fixConfigDefaults(decoratedConfig);
   const translatedConfig = config.htermConfigTranslate(fixedConfig);
@@ -444,3 +461,20 @@ export const decorateSessionClass = <T>(Session: T): T => {
 };
 
 export {toDependencies as _toDependencies};
+
+const ipcMain = _ipcMain as IpcMainWithCommands;
+
+ipcMain.handle('child_process.exec', (event, command, options) => {
+  return promisify(exec)(command, options);
+});
+
+ipcMain.handle('child_process.execFile', (event, file, args, options) => {
+  return promisify(execFile)(file, args, options);
+});
+
+ipcMain.handle('getLoadedPluginVersions', () => getLoadedPluginVersions());
+ipcMain.handle('getPaths', () => getPaths());
+ipcMain.handle('getBasePaths', () => getBasePaths());
+ipcMain.handle('getDeprecatedConfig', () => getDeprecatedConfig());
+ipcMain.handle('getDecoratedConfig', (e, profile) => getDecoratedConfig(profile));
+ipcMain.handle('getDecoratedKeymaps', () => getDecoratedKeymaps());

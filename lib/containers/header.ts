@@ -1,10 +1,11 @@
 import {createSelector} from 'reselect';
 
-import Header from '../components/header';
+import type {HyperState, HyperDispatch, ITab} from '../../typings/hyper';
 import {closeTab, changeTab, maximize, openHamburgerMenu, unmaximize, minimize, close} from '../actions/header';
-import {connect} from '../utils/plugins';
+import {requestTermGroup} from '../actions/term-groups';
+import Header from '../components/header';
 import {getRootGroups} from '../selectors';
-import {HyperState, HyperDispatch, ITab} from '../hyper';
+import {connect} from '../utils/plugins';
 
 const isMac = /Mac/.test(navigator.userAgent);
 
@@ -15,18 +16,16 @@ const getActivityMarkers = ({ui}: HyperState) => ui.activityMarkers;
 const getTabs = createSelector(
   [getSessions, getRootGroups, getActiveSessions, getActiveRootGroup, getActivityMarkers],
   (sessions, rootGroups, activeSessions, activeRootGroup, activityMarkers) =>
-    rootGroups.map(
-      (t): ITab => {
-        const activeSessionUid = activeSessions[t.uid];
-        const session = sessions[activeSessionUid];
-        return {
-          uid: t.uid,
-          title: session.title,
-          isActive: t.uid === activeRootGroup,
-          hasActivity: activityMarkers[session.uid]
-        };
-      }
-    )
+    rootGroups.map((t): ITab => {
+      const activeSessionUid = activeSessions[t.uid];
+      const session = sessions[activeSessionUid];
+      return {
+        uid: t.uid,
+        title: session.title,
+        isActive: t.uid === activeRootGroup,
+        hasActivity: activityMarkers[session.uid]
+      };
+    })
 );
 
 const mapStateToProps = (state: HyperState) => {
@@ -40,7 +39,9 @@ const mapStateToProps = (state: HyperState) => {
     maximized: state.ui.maximized,
     fullScreen: state.ui.fullScreen,
     showHamburgerMenu: state.ui.showHamburgerMenu,
-    showWindowControls: state.ui.showWindowControls
+    showWindowControls: state.ui.showWindowControls,
+    defaultProfile: state.ui.defaultProfile,
+    profiles: state.ui.profiles
   };
 };
 
@@ -72,6 +73,10 @@ const mapDispatchToProps = (dispatch: HyperDispatch) => {
 
     close: () => {
       dispatch(close());
+    },
+
+    openNewTab: (profile: string) => {
+      dispatch(requestTermGroup(undefined, profile));
     }
   };
 };

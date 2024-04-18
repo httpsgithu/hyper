@@ -1,15 +1,19 @@
 import {release} from 'os';
-import {app, shell, MenuItemConstructorOptions, dialog, clipboard} from 'electron';
+
+import {app, shell, dialog, clipboard} from 'electron';
+import type {MenuItemConstructorOptions} from 'electron';
+
 import {getConfig, getPlugins} from '../../config';
-const {arch, env, platform, versions} = process;
 import {version} from '../../package.json';
 
-export default (commands: Record<string, string>, showAbout: () => void): MenuItemConstructorOptions => {
+const {arch, env, platform, versions} = process;
+
+const helpMenu = (commands: Record<string, string>, showAbout: () => void): MenuItemConstructorOptions => {
   const submenu: MenuItemConstructorOptions[] = [
     {
       label: `${app.name} Website`,
       click() {
-        shell.openExternal('https://hyper.is');
+        void shell.openExternal('https://hyper.is');
       }
     },
     {
@@ -22,7 +26,7 @@ export default (commands: Record<string, string>, showAbout: () => void): MenuIt
   If not, please try and fulfil these first.
 -->
 <!-- 👉 Checked checkbox should look like this: [x] -->
-- [ ] Your Hyper.app version is **${version}**. Please verify your using the [latest](https://github.com/vercel/hyper/releases/latest) Hyper.app version
+- [ ] Your Hyper.app version is **${version}**. Please verify you're using the [latest](https://github.com/vercel/hyper/releases/latest) Hyper.app version
 - [ ] I have searched the [issues](https://github.com/vercel/hyper/issues) of this repo and believe that this is not a duplicate
 ---
 - **Any relevant information from devtools?** _(CMD+OPTION+I on macOS, CTRL+SHIFT+I elsewhere)_:
@@ -39,12 +43,12 @@ export default (commands: Record<string, string>, showAbout: () => void): MenuIt
 
 
 ---
-<!-- ~/.hyper.js config -->
+<!-- hyper.json config -->
 - **${app.name} version**: ${env.TERM_PROGRAM_VERSION} "${app.getVersion()}"
 - **OS ARCH VERSION:** ${platform} ${arch} ${release()}
 - **Electron:** ${versions.electron}  **LANG:** ${env.LANG}
 - **SHELL:** ${env.SHELL}   **TERM:** ${env.TERM}
-<details><summary><strong>.hyper.js contents</strong></summary>
+<details><summary><strong>hyper.json contents</strong></summary>
 
 \`\`\`json
 ${JSON.stringify(getConfig(), null, 2)}
@@ -60,7 +64,7 @@ ${JSON.stringify(getPlugins(), null, 2)}
         const issueURL = `https://github.com/vercel/hyper/issues/new?body=${encodeURIComponent(body)}`;
         const copyAndSend = () => {
           clipboard.writeText(body);
-          shell.openExternal(
+          void shell.openExternal(
             `https://github.com/vercel/hyper/issues/new?body=${encodeURIComponent(
               '<!-- We have written the needed data into your clipboard because it was too large to send. ' +
                 'Please paste. -->\n'
@@ -70,7 +74,7 @@ ${JSON.stringify(getPlugins(), null, 2)}
         if (!focusedWindow) {
           copyAndSend();
         } else if (issueURL.length > 6144) {
-          dialog
+          void dialog
             .showMessageBox(focusedWindow, {
               message:
                 'There is too much data to send to GitHub directly. The data will be copied to the clipboard, ' +
@@ -84,7 +88,7 @@ ${JSON.stringify(getPlugins(), null, 2)}
               }
             });
         } else {
-          shell.openExternal(issueURL);
+          void shell.openExternal(issueURL);
         }
       }
     }
@@ -94,7 +98,7 @@ ${JSON.stringify(getPlugins(), null, 2)}
     submenu.push(
       {type: 'separator'},
       {
-        role: 'about',
+        label: 'About Hyper',
         click() {
           showAbout();
         }
@@ -106,3 +110,5 @@ ${JSON.stringify(getPlugins(), null, 2)}
     submenu
   };
 };
+
+export default helpMenu;

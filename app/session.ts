@@ -1,10 +1,17 @@
 import {EventEmitter} from 'events';
+import {dirname} from 'path';
 import {StringDecoder} from 'string_decoder';
+
 import defaultShell from 'default-shell';
-import {getDecoratedEnv} from './plugins';
-import {productName, version} from './package.json';
+import type {IPty, IWindowsPtyForkOptions, spawn as npSpawn} from 'node-pty';
+import osLocale from 'os-locale';
+import shellEnv from 'shell-env';
+
 import * as config from './config';
-import {IPty, IWindowsPtyForkOptions, spawn as npSpawn} from 'node-pty';
+import {cliScriptPath} from './config/paths';
+import {productName, version} from './package.json';
+import {getDecoratedEnv} from './plugins';
+import {getFallBackShellConfig} from './utils/shell-fallback';
 
 const createNodePtyError = () =>
   new Error(
@@ -19,7 +26,6 @@ try {
   throw createNodePtyError();
 }
 
-const envFromConfig = config.getConfig().env || {};
 const useConpty = config.getConfig().useConpty;
 
 // Max duration to batch session data before sending it to the renderer process.
@@ -52,7 +58,7 @@ class DataBatcher extends EventEmitter {
     this.timeout = null;
   }
 
-  write(chunk: Buffer) {
+  write(chunk: Buffer | string) {
     if (this.data.length + chunk.length >= BATCH_MAX_SIZE) {
       // We've reached the max batch size. Flush it and start another one
       if (this.timeout) {
@@ -62,7 +68,7 @@ class DataBatcher extends EventEmitter {
       this.flush();
     }
 
-    this.data += this.decoder.write(chunk);
+    this.data += typeof chunk === 'string' ? chunk : this.decoder.write(chunk);
 
     if (!this.timeout) {
       this.timeout = setTimeout(() => this.flush(), BATCH_DURATION_MS);
@@ -80,41 +86,56 @@ class DataBatcher extends EventEmitter {
 
 interface SessionOptions {
   uid: string;
-  rows: number;
-  cols: number;
-  cwd: string;
-  shell: string;
-  shellArgs: string[];
+  rows?: number;
+  cols?: number;
+  cwd?: string;
+  shell?: string;
+  shellArgs?: string[];
+  profile: string;
 }
 export default class Session extends EventEmitter {
   pty: IPty | null;
   batcher: DataBatcher | null;
   shell: string | null;
   ended: boolean;
+  initTimestamp: number;
+  profile!: string;
   constructor(options: SessionOptions) {
     super();
     this.pty = null;
     this.batcher = null;
     this.shell = null;
     this.ended = false;
+    this.initTimestamp = new Date().getTime();
     this.init(options);
   }
 
-  init({uid, rows, cols: columns, cwd, shell, shellArgs}: SessionOptions) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const osLocale = require('os-locale') as typeof import('os-locale');
-    const baseEnv = Object.assign(
-      {},
-      process.env,
-      {
-        LANG: `${osLocale.sync().replace(/-/, '_')}.UTF-8`,
-        TERM: 'xterm-256color',
-        COLORTERM: 'truecolor',
-        TERM_PROGRAM: productName,
-        TERM_PROGRAM_VERSION: version
-      },
-      envFromConfig
-    );
+  init({uid, rows, cols, cwd, shell: _shell, shellArgs: _shellArgs, profile}: SessionOptions) {
+    this.profile = profile;
+    const envFromConfig = config.getProfileConfig(profile).env || {};
+    const defaultShellArgs = ['--login'];
+
+    const shell = _shell || defaultShell;
+    const shellArgs = _shellArgs || defaultShellArgs;
+
+    const cleanEnv =
+      process.env['APPIMAGE'] && process.env['APPDIR'] ? shellEnv.sync(_shell || defaultShell) : process.env;
+    const baseEnv: Record<string, string> = {
+      ...cleanEnv,
+      LANG: `${osLocale.sync().replace(/-/, '_')}.UTF-8`,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      TERM_PROGRAM: productName,
+      TERM_PROGRAM_VERSION: version,
+      ...envFromConfig
+    };
+    // path to AppImage mount point is added to PATH environment variable automatically
+    // which conflicts with the cli
+    if (baseEnv['APPIMAGE'] && baseEnv['APPDIR']) {
+      baseEnv['PATH'] = [dirname(cliScriptPath)]
+        .concat((baseEnv['PATH'] || '').split(':').filter((val) => !val.startsWith(baseEnv['APPDIR'])))
+        .join(':');
+    }
 
     // Electron has a default value for process.env.GOOGLE_API_KEY
     // We don't want to leak this to the shell
@@ -123,10 +144,8 @@ export default class Session extends EventEmitter {
       delete baseEnv.GOOGLE_API_KEY;
     }
 
-    const defaultShellArgs = ['--login'];
-
     const options: IWindowsPtyForkOptions = {
-      cols: columns,
+      cols,
       rows,
       cwd,
       env: getDecoratedEnv(baseEnv)
@@ -138,8 +157,9 @@ export default class Session extends EventEmitter {
     }
 
     try {
-      this.pty = spawn(shell || defaultShell, shellArgs || defaultShellArgs, options);
-    } catch (err) {
+      this.pty = spawn(shell, shellArgs, options);
+    } catch (_err) {
+      const err = _err as {message: string};
       if (/is not a function/.test(err.message)) {
         throw createNodePtyError();
       } else {
@@ -152,21 +172,53 @@ export default class Session extends EventEmitter {
       if (this.ended) {
         return;
       }
-      this.batcher?.write(chunk as any);
+      this.batcher?.write(chunk);
     });
 
     this.batcher.on('flush', (data: string) => {
       this.emit('data', data);
     });
 
-    this.pty.onExit(() => {
+    this.pty.onExit((e) => {
       if (!this.ended) {
-        this.ended = true;
-        this.emit('exit');
+        // fall back to default shell config if the shell exits within 1 sec with non zero exit code
+        // this will inform users in case there are errors in the config instead of instant exit
+        const runDuration = new Date().getTime() - this.initTimestamp;
+        if (e.exitCode > 0 && runDuration < 1000) {
+          const fallBackShellConfig = getFallBackShellConfig(shell, shellArgs, defaultShell, defaultShellArgs);
+          if (fallBackShellConfig) {
+            const msg = `
+shell exited in ${runDuration} ms with exit code ${e.exitCode}
+please check the shell config: ${JSON.stringify({shell, shellArgs}, undefined, 2)}
+using fallback shell config: ${JSON.stringify(fallBackShellConfig, undefined, 2)}
+`;
+            console.warn(msg);
+            this.batcher?.write(msg.replace(/\n/g, '\r\n'));
+            this.init({
+              uid,
+              rows,
+              cols,
+              cwd,
+              shell: fallBackShellConfig.shell,
+              shellArgs: fallBackShellConfig.shellArgs,
+              profile
+            });
+          } else {
+            const msg = `
+shell exited in ${runDuration} ms with exit code ${e.exitCode}
+No fallback available, please check the shell config.
+`;
+            console.warn(msg);
+            this.batcher?.write(msg.replace(/\n/g, '\r\n'));
+          }
+        } else {
+          this.ended = true;
+          this.emit('exit');
+        }
       }
     });
 
-    this.shell = shell || defaultShell;
+    this.shell = shell;
   }
 
   exit() {
@@ -185,7 +237,8 @@ export default class Session extends EventEmitter {
     if (this.pty) {
       try {
         this.pty.resize(cols, rows);
-      } catch (err) {
+      } catch (_err) {
+        const err = _err as {stack: any};
         console.error(err.stack);
       }
     } else {
@@ -197,7 +250,8 @@ export default class Session extends EventEmitter {
     if (this.pty) {
       try {
         this.pty.kill();
-      } catch (err) {
+      } catch (_err) {
+        const err = _err as {stack: any};
         console.error('exit error', err.stack);
       }
     } else {

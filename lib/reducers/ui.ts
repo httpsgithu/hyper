@@ -1,9 +1,18 @@
-import {remote} from 'electron';
-// TODO: Should be updates to new async API https://medium.com/@nornagon/electrons-remote-module-considered-harmful-70d69500f31
+import {release} from 'os';
 
-import Immutable, {Immutable as ImmutableType} from 'seamless-immutable';
-import {decorateUIReducer} from '../utils/plugins';
-import {CONFIG_LOAD, CONFIG_RELOAD} from '../constants/config';
+import Immutable from 'seamless-immutable';
+import type {Immutable as ImmutableType} from 'seamless-immutable';
+
+import {CONFIG_LOAD, CONFIG_RELOAD} from '../../typings/constants/config';
+import {NOTIFICATION_MESSAGE, NOTIFICATION_DISMISS} from '../../typings/constants/notifications';
+import {
+  SESSION_ADD,
+  SESSION_RESIZE,
+  SESSION_PTY_DATA,
+  SESSION_PTY_EXIT,
+  SESSION_SET_ACTIVE,
+  SESSION_SET_CWD
+} from '../../typings/constants/sessions';
 import {
   UI_FONT_SIZE_SET,
   UI_FONT_SIZE_RESET,
@@ -13,27 +22,21 @@ import {
   UI_WINDOW_GEOMETRY_CHANGED,
   UI_ENTER_FULLSCREEN,
   UI_LEAVE_FULLSCREEN
-} from '../constants/ui';
-import {NOTIFICATION_MESSAGE, NOTIFICATION_DISMISS} from '../constants/notifications';
-import {
-  SESSION_ADD,
-  SESSION_RESIZE,
-  SESSION_PTY_DATA,
-  SESSION_PTY_EXIT,
-  SESSION_SET_ACTIVE,
-  SESSION_SET_CWD
-} from '../constants/sessions';
-import {UPDATE_AVAILABLE} from '../constants/updater';
-import {uiState, HyperActions} from '../hyper';
+} from '../../typings/constants/ui';
+import {UPDATE_AVAILABLE} from '../../typings/constants/updater';
+import type {uiState, Mutable, IUiReducer} from '../../typings/hyper';
+import {decorateUIReducer} from '../utils/plugins';
+
+const isWindows = ['Windows', 'Win16', 'Win32', 'WinCE'].includes(navigator.platform) || process.platform === 'win32';
 
 const allowedCursorShapes = new Set(['BEAM', 'BLOCK', 'UNDERLINE']);
 const allowedCursorBlinkValues = new Set([true, false]);
 const allowedBells = new Set(['SOUND', 'false', false]);
-const allowedHamburgerMenuValues = new Set([true, false]);
+const allowedHamburgerMenuValues = new Set([true, false, ''] as const);
 const allowedWindowControlsValues = new Set([true, false, 'left']);
 
 // Populate `config-default.js` from this :)
-const initial: ImmutableType<uiState> = Immutable({
+const initial: uiState = Immutable<Mutable<uiState>>({
   cols: null,
   rows: null,
   scrollback: 1000,
@@ -53,11 +56,12 @@ const initial: ImmutableType<uiState> = Immutable({
   fontSmoothingOverride: 'antialiased',
   fontWeight: 'normal',
   fontWeightBold: 'bold',
+  imageSupport: true,
   lineHeight: 1,
   letterSpacing: 0,
   css: '',
   termCSS: '',
-  openAt: {} as Record<string, number>,
+  openAt: {},
   resizeAt: 0,
   colors: {
     black: '#000000',
@@ -77,7 +81,7 @@ const initial: ImmutableType<uiState> = Immutable({
     lightCyan: '#68FDFE',
     lightWhite: '#FFFFFF'
   },
-  activityMarkers: {} as Record<string, boolean>,
+  activityMarkers: {},
   notifications: {
     font: false,
     resize: false,
@@ -110,12 +114,13 @@ const initial: ImmutableType<uiState> = Immutable({
   webGLRenderer: true,
   webLinksActivationKey: '',
   macOptionSelectionMode: 'vertical',
-  disableLigatures: false
+  disableLigatures: true,
+  screenReaderMode: false,
+  defaultProfile: '',
+  profiles: []
 });
 
-const currentWindow = remote.getCurrentWindow();
-
-const reducer = (state = initial, action: HyperActions) => {
+const reducer: IUiReducer = (state = initial, action) => {
   let state_ = state;
   let isMax;
   switch (action.type) {
@@ -127,7 +132,7 @@ const reducer = (state = initial, action: HyperActions) => {
         // font size changed from the config
         .merge(
           (() => {
-            const ret: Immutable.DeepPartial<uiState> = {};
+            const ret: Immutable.DeepPartial<Mutable<uiState>> = {};
 
             if (config.scrollback) {
               ret.scrollback = config.scrollback;
@@ -214,7 +219,7 @@ const reducer = (state = initial, action: HyperActions) => {
             }
 
             if (allowedBells.has(config.bell)) {
-              ret.bell = config.bell;
+              ret.bell = (config.bell as any) === 'false' ? false : config.bell;
             }
 
             if (config.bellSoundURL !== state.bellSoundURL) {
@@ -239,7 +244,7 @@ const reducer = (state = initial, action: HyperActions) => {
               ret.modifierKeys = config.modifierKeys;
             }
 
-            if (allowedHamburgerMenuValues.has(config.showHamburgerMenu as any)) {
+            if (allowedHamburgerMenuValues.has(config.showHamburgerMenu)) {
               ret.showHamburgerMenu = config.showHamburgerMenu;
             }
 
@@ -265,8 +270,33 @@ const reducer = (state = initial, action: HyperActions) => {
               ret.macOptionSelectionMode = config.macOptionSelectionMode;
             }
 
-            if (config.disableLigatures) {
+            if (config.disableLigatures !== undefined) {
               ret.disableLigatures = config.disableLigatures;
+            }
+
+            if (config.screenReaderMode !== undefined) {
+              ret.screenReaderMode = config.screenReaderMode;
+            }
+
+            const buildNumber = parseInt(release().split('.').at(-1) || '0', 10);
+            if (isWindows && !Number.isNaN(buildNumber) && buildNumber > 0) {
+              const useConpty = typeof config.useConpty === 'boolean' ? config.useConpty : buildNumber >= 18309;
+              ret.windowsPty = {
+                backend: useConpty ? 'conpty' : 'winpty',
+                buildNumber
+              };
+            }
+
+            if (config.imageSupport !== undefined) {
+              ret.imageSupport = config.imageSupport;
+            }
+
+            if (config.defaultProfile !== undefined) {
+              ret.defaultProfile = config.defaultProfile;
+            }
+
+            if (config.profiles !== undefined) {
+              ret.profiles = config.profiles;
             }
 
             ret._lastUpdate = now;
@@ -304,12 +334,12 @@ const reducer = (state = initial, action: HyperActions) => {
 
     case SESSION_PTY_EXIT:
       state_ = state
-        .updateIn(['openAt'], (times: ImmutableType<any>) => {
+        .updateIn(['openAt'], (times: ImmutableType<Record<string, number>>) => {
           const times_ = times.asMutable();
           delete times_[action.uid];
           return times_;
         })
-        .updateIn(['activityMarkers'], (markers: ImmutableType<any>) => {
+        .updateIn(['activityMarkers'], (markers: ImmutableType<Record<string, boolean>>) => {
           const markers_ = markers.asMutable();
           delete markers_[action.uid];
           return markers_;
@@ -380,7 +410,7 @@ const reducer = (state = initial, action: HyperActions) => {
       break;
 
     case UI_WINDOW_GEOMETRY_CHANGED:
-      isMax = currentWindow.isMaximized();
+      isMax = action.isMaximized;
       if (state.maximized !== isMax) {
         state_ = state.set('maximized', isMax);
       }
@@ -431,13 +461,7 @@ const reducer = (state = initial, action: HyperActions) => {
     }
   }
 
-  if (
-    typeof state.cols !== 'undefined' &&
-    state.cols !== null &&
-    typeof state.rows !== 'undefined' &&
-    state.rows !== null &&
-    (state.rows !== state_.rows || state.cols !== state_.cols)
-  ) {
+  if (state.cols !== null && state.rows !== null && (state.rows !== state_.rows || state.cols !== state_.cols)) {
     state_ = state_.merge({notifications: {resize: true}}, {deep: true});
   }
 
@@ -451,7 +475,5 @@ const reducer = (state = initial, action: HyperActions) => {
 
   return state_;
 };
-
-export type IUiReducer = typeof reducer;
 
 export default decorateUIReducer(reducer);
